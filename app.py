@@ -1,68 +1,57 @@
-from flask import Flask, render_template_string, request, redirect, url_for
+import sqlite3
+from flask import Flask, render_template, request, redirect, url_for
 
 app = Flask(__name__)
 
+def get_db_connection():
+    conn = sqlite3.connect('inventario.db')
+    conn.row_factory = sqlite3.Row
+    return conn
 
-registros = []
-
-
-HTML_TEMPLATE = """
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <title>Aplicación Monolítica - Examen</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 40px; background-color: #f4f4f9; }
-        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); max-width: 500px; margin: 0 auto; }
-        h1 { color: #333; }
-        input[type="text"] { width: 70%; padding: 8px; margin-right: 5px; }
-        button { padding: 8px 15px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; }
-        ul { list-style-type: none; padding: 0; }
-        li { background: #e9ecef; margin: 5px 0; padding: 10px; border-radius: 4px; }
-    </style>
-</head>
-<body>
-    <div class="card">
-        <h1>Sistema de Registro (Monolito)</h1>
-        
-        <!-- FUNCIONALIDAD 1: Registrar -->
-        <h3>1. Registrar Nuevo Elemento</h3>
-        <form action="/agregar" method="POST">
-            <input type="text" name="nuevo_dato" placeholder="Escribe algo aquí..." required>
-            <button type="submit">Guardar</button>
-        </form>
-
-        <hr>
-
-        <!-- FUNCIONALIDAD 2: Consultar -->
-        <h3>2. Consultar Registros</h3>
-        {% if registros %}
-            <ul>
-                {% for item in registros %}
-                    <li>{{ item }}</li>
-                {% endfor %}
-            </ul>
-        {% else %}
-            <p>No hay registros guardados aún.</p>
-        {% endif %}
-    </div>
-</body>
-</html>
-"""
+def init_db():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS productos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre TEXT NOT NULL,
+            categoria TEXT NOT NULL,
+            precio REAL NOT NULL,
+            fecha_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    conn.commit()
+    conn.close()
 
 @app.route('/')
-def inicio():
-    # Muestra la lista de registros (Funcionalidad: Consultar)
-    return render_template_string(HTML_TEMPLATE, registros=registros)
+def index():
+    conn = get_db_connection()
+    productos = conn.execute('SELECT * FROM productos ORDER BY id DESC').fetchall()
+    conn.close()
+    return render_template('index.html', productos=productos)
 
 @app.route('/agregar', methods=['POST'])
 def agregar():
-    # Recibe un dato del formulario y lo guarda (Funcionalidad: Registrar)
-    dato = request.form.get('nuevo_dato')
-    if dato:
-        registros.append(dato)
-    return redirect(url_for('inicio'))
+    nombre = request.form['nombre']
+    categoria = request.form['categoria']
+    precio = request.form['precio']
+    
+    if nombre and categoria and precio:
+        conn = get_db_connection()
+        conn.execute('INSERT INTO productos (nombre, categoria, precio) VALUES (?, ?, ?)',
+                     (nombre, categoria, float(precio)))
+        conn.commit()
+        conn.close()
+    return redirect(url_for('index'))
+
+@app.route('/eliminar/<int:id>')
+def eliminar(id):
+    conn = get_db_connection()
+    conn.execute('DELETE FROM productos WHERE id = ?', (id,))
+    conn.commit()
+    conn.close()
+    return redirect(url_for('index'))
 
 if __name__ == '__main__':
+    init_db()
     app.run(host='0.0.0.0', port=8000)
